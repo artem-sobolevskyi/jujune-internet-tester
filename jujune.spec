@@ -11,6 +11,7 @@ a = Analysis(
     binaries=binaries,
     datas=[('assets', 'assets')],
     hiddenimports=[
+        'jujune.update',
         'pystray._win32',
         'pystray._darwin',
         'pystray._gtk',

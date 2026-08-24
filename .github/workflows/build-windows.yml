@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -14,6 +17,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Write build version
+        shell: bash
+        run: |
+          printf 'VERSION = "1.0.%s"\nCOMMIT = "%s"\n' "${{ github.run_number }}" "${{ github.sha }}" > jujune/_buildinfo.py
 
       - name: Install dependencies
         run: |
@@ -32,3 +40,25 @@ jobs:
           name: Jujune
           path: dist/Jujune.exe
           if-no-files-found: error
+
+      - name: Publish source-repo release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Jujune 1.0.${{ github.run_number }}
+          files: dist/Jujune.exe
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish public download
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          repository: artem-24paybase/jujune-releases
+          tag_name: v1.0.${{ github.run_number }}
+          name: Jujune 1.0.${{ github.run_number }}
+          files: dist/Jujune.exe
+          make_latest: true
+          token: ${{ secrets.RELEASE_GITHUB_TOKEN }}

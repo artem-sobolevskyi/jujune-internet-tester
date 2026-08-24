@@ -1,1 +1,4 @@
-__version__ = "1.0.0"
+try:
+    from jujune._buildinfo import VERSION as __version__
+except ImportError:
+    __version__ = "1.0.0"

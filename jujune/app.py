@@ -48,6 +48,45 @@ def _beep() -> None:
         pass
 
 
+def _play_mp3(path) -> None:
+    try:
+        if sys.platform == "darwin":
+            subprocess.Popen(
+                ["afplay", str(path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return
+        if sys.platform != "win32":
+            return
+        import ctypes
+        from ctypes import wintypes
+
+        mci = ctypes.windll.winmm.mciSendStringW
+        mci.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.UINT, wintypes.HANDLE]
+        mci.restype = wintypes.DWORD
+        buf = ctypes.create_unicode_buffer(255)
+        src = str(path).replace("/", "\\")
+        alias = "jujune_nyaaa"
+        mci(f"close {alias}", buf, 254, None)
+        err = mci(f'open "{src}" type mpegvideo alias {alias}', buf, 254, None)
+        if err:
+            err = mci(f'open "{src}" alias {alias}', buf, 254, None)
+        if err:
+            return
+        mci(f"play {alias} wait", buf, 254, None)
+        mci(f"close {alias}", buf, 254, None)
+    except Exception:
+        pass
+
+
+def _play_startup_sound() -> None:
+    path = assets_dir() / "nyaaa.mp3"
+    if not path.is_file():
+        return
+    threading.Thread(target=_play_mp3, args=(path,), daemon=True, name="jujune-nyaaa").start()
+
+
 def _tray_image() -> Image.Image:
     path = assets_dir() / "jujune_icon.png"
     img = Image.open(path).convert("RGBA")
@@ -132,6 +171,35 @@ def main(argv: list[str] | None = None) -> int:
         scale=float(cfg.get("scale") or 1.0),
     )
     overlay_ref["w"] = overlay
+
+    def start_update() -> None:
+        if overlay.update_busy:
+            return
+        overlay.update_busy = True
+        overlay.update_label = "CHECKING..."
+        overlay.update_detail = ""
+
+        def progress(msg: str) -> None:
+            overlay.update_label = msg
+
+        def work() -> None:
+            from jujune.update import UpdateError, run_update
+
+            try:
+                run_update(progress=progress, restart=lambda: overlay.root.after(0, on_quit))
+            except UpdateError as exc:
+                overlay.update_label = "CHECK FOR UPDATE"
+                overlay.update_detail = str(exc)[:88]
+            except Exception as exc:
+                overlay.update_label = "CHECK FOR UPDATE"
+                overlay.update_detail = f"{type(exc).__name__}: {exc}"[:88]
+            finally:
+                if not overlay.update_label.startswith("RESTARTING"):
+                    overlay.update_busy = False
+
+        threading.Thread(target=work, name="jujune-update", daemon=True).start()
+
+    overlay.on_update = start_update
     if args.expanded:
         overlay.set_mode("expanded")
     elif cfg.get("compact", True):
@@ -175,6 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             pystray.MenuItem("Expanded", lambda: show_overlay("expanded")),
             pystray.MenuItem("Mini", lambda: show_overlay("mini")),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Check for update", lambda: overlay.root.after(0, start_update)),
             pystray.MenuItem("Quit", lambda: overlay.root.after(0, on_quit)),
         )
         icon = pystray.Icon("Jujune", _tray_image(), "Jujune", menu)
@@ -186,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         pass
 
+    _play_startup_sound()
     overlay.loop()
     engine.stop()
     return 0

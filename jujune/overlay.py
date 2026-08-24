@@ -7,6 +7,7 @@ from typing import Optional
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
+from jujune import __version__
 from jujune.art import load_pose
 from jujune.engine import Snapshot
 from jujune.paths import assets_dir
@@ -24,9 +25,9 @@ C_MUTED = (179, 155, 184, 255)
 C_DIM = (40, 22, 56, 255)
 C_GPU = (186, 140, 255, 255)
 
-COMPACT = (680, 304)
-EXPANDED = (780, 940)
-MINI = (188, 188)
+COMPACT = (456, 136)
+EXPANDED = (780, 988)
+MINI = (168, 168)
 
 
 _FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
@@ -81,12 +82,10 @@ def _fmt_ms(value: Optional[float]) -> str:
     return f"{value:.0f}" if value >= 10 else f"{value:.1f}"
 
 
-def _fmt_ghz(mhz: Optional[float], compact: bool = False) -> str:
+def _fmt_ghz(mhz: Optional[float]) -> str:
     if mhz is None or mhz <= 0:
         return "n/a"
     ghz = mhz / 1000.0
-    if compact:
-        return f"{ghz:.1f}GHz" if ghz >= 10 else f"{ghz:.2f}GHz"
     return f"{ghz:.1f} GHz" if ghz >= 10 else f"{ghz:.2f} GHz"
 
 
@@ -113,9 +112,10 @@ def _temp_label(temps: dict[str, float]) -> str:
 
 
 class Overlay:
-    def __init__(self, on_close, on_quit, get_snapshot, scale: float = 1.0) -> None:
+    def __init__(self, on_close, on_quit, get_snapshot, scale: float = 1.0, on_update=None) -> None:
         self.on_close = on_close
         self.on_quit = on_quit
+        self.on_update = on_update
         self.get_snapshot = get_snapshot
         self.scale = max(0.85, min(1.35, scale))
         self.mode = "compact"
@@ -125,6 +125,9 @@ class Overlay:
         self._photo = None
         self._alive = True
         self._t0 = time.time()
+        self.update_label = "CHECK FOR UPDATE"
+        self.update_detail = ""
+        self.update_busy = False
 
         self.root = tk.Tk()
         self.root.title("Jujune")
@@ -255,6 +258,8 @@ class Overlay:
             self.toggle_compact()
         elif action == "quit":
             self.on_quit()
+        elif action == "update" and self.on_update and not self.update_busy:
+            self.on_update()
 
     def _tick(self) -> None:
         if not self._alive:
@@ -318,11 +323,10 @@ class Overlay:
 
     def _draw_compact(self, img: Image.Image, draw: ImageDraw.ImageDraw, snap: Optional[Snapshot]) -> None:
         s = self.scale
-        w, _h = img.size
-        pose = self._pose(snap, int(132 * s))
-        img.alpha_composite(pose, (int(8 * s), int(8 * s)))
-        self.hits.append(("expand", (int(8 * s), int(8 * s), int(8 * s) + pose.width, int(8 * s) + pose.height)))
-        x0 = int(128 * s)
+        pose = self._pose(snap, int(124 * s))
+        img.alpha_composite(pose, (int(8 * s), int(6 * s)))
+        self.hits.append(("expand", (int(8 * s), int(6 * s), int(8 * s) + pose.width, int(6 * s) + pose.height)))
+        x0 = int(118 * s)
         font_xs = _font("Nunito-Bold.ttf", int(11 * s))
         font_sm = _font("Nunito-SemiBold.ttf", int(12 * s))
         font_n = _font("Nunito-ExtraBold.ttf", int(28 * s))
@@ -331,59 +335,19 @@ class Overlay:
         title = snap.verdict.title if snap else "STARTING"
         color = _level_color(snap.verdict.level if snap else "ok")
         _shadow_text(draw, (x0 + int(78 * s), int(8 * s)), title, font_xs, color)
-        self._btn(draw, (w - int(64 * s), int(8 * s)), "–", "mini", int(22 * s), int(20 * s))
-        self._btn(draw, (w - int(36 * s), int(8 * s)), "×", "close", int(22 * s), int(20 * s))
+        self._btn(draw, (int(392 * s), int(8 * s)), "–", "mini", int(22 * s), int(20 * s))
+        self._btn(draw, (int(420 * s), int(8 * s)), "×", "close", int(22 * s), int(20 * s))
 
         ping = _fmt_ms(snap.net.ping_ms if snap else None)
         _shadow_text(draw, (x0, int(26 * s)), ping, font_n, color)
         _shadow_text(draw, (x0 + int(font_n.getlength(ping) + 6), int(38 * s)), "ms", font_xs, C_MUTED)
         jit = snap.net.jitter_ms if snap else 0
         loss = snap.net.loss_pct if snap else 0
-        graphs = snap.graphs if snap else None
-        gpu = graphs.gpu_pct if graphs and graphs.gpu_pct is not None else (snap.sys.gpu_util if snap else None)
-        cpu = graphs.cpu_pct if graphs else (snap.sys.cpu_pct if snap else 0)
-        fps = graphs.fps if graphs else None
-        ft = graphs.frametime_ms if graphs else None
-        gpu_s = f"{gpu:.0f}%" if gpu is not None else "n/a"
-        ft_s = f"{ft:.1f}ms" if ft is not None else "n/a"
-        fps_s = f"{fps:.0f} FPS" if fps is not None else ""
-        clock_s = _fmt_ghz(graphs.cpu_mhz if graphs else None, compact=True)
-        _shadow_text(
-            draw,
-            (x0 + int(96 * s), int(28 * s)),
-            f"jit {jit:.0f}  loss {loss:.0f}%  CPU {cpu:.0f}%  {clock_s}  GPU {gpu_s}",
-            font_sm,
-            C_TEXT,
-        )
-        _shadow_text(draw, (x0 + int(96 * s), int(46 * s)), f"frame {ft_s}  {fps_s}".strip(), font_xs, C_GOLD)
+        _shadow_text(draw, (x0 + int(96 * s), int(32 * s)), f"jit {jit:.0f}   loss {loss:.0f}%", font_sm, C_TEXT)
 
         hist = snap.net.history if snap else []
-        self._graph(draw, x0, int(66 * s), w - x0 - int(14 * s), int(44 * s), hist, color, "ping", "collecting ping...")
-        gap = int(8 * s)
-        gw = (w - x0 - int(14 * s) - 2 * gap) // 3
-        gy = int(116 * s)
-        gh = int(118 * s)
-        cpu_hist = graphs.cpu_history if graphs else []
-        gpu_hist = graphs.gpu_history if graphs else []
-        ft_hist = graphs.frametime_history if graphs else []
-        self._graph(draw, x0, gy, gw, gh, cpu_hist, C_CYAN, f"CPU {cpu:.0f}% {clock_s}", "cpu...", 0, 100)
-        self._graph(draw, x0 + gw + gap, gy, gw, gh, gpu_hist, C_GPU, f"GPU {gpu_s}", "gpu...", 0, 100)
-        self._graph(
-            draw,
-            x0 + 2 * (gw + gap),
-            gy,
-            gw,
-            gh,
-            ft_hist,
-            C_GOLD,
-            f"FT {ft_s} {fps_s}".strip(),
-            "waiting for game...",
-            0,
-            50,
-            guides=[(16.67, "60", (92, 255, 196, 140)), (33.33, "30", (255, 75, 120, 140))],
-        )
-        quote = snap.verdict.quote if snap else "Warming up the channel..."
-        _shadow_text(draw, (x0, int(242 * s)), quote[:62], font_xs, C_GOLD)
+        self._sparkline(draw, int(x0), int(66 * s), int(250 * s), int(28 * s), hist, color)
+        cpu = snap.sys.cpu_pct if snap else 0
         if snap and snap.sys.disk_util is not None:
             disk_s = f"DISK {snap.sys.disk_util:.0f}%"
         elif snap:
@@ -391,8 +355,10 @@ class Overlay:
         else:
             disk_s = "DISK —"
         temp = _temp_label(snap.sys.temps if snap else {})
-        app = graphs.frame_app if graphs and graphs.frame_app else ""
-        _shadow_text(draw, (x0, int(262 * s)), f"{disk_s}   {temp}   {app}"[:70], font_sm, C_MUTED)
+        line = f"CPU {cpu:.0f}%   {disk_s}   {temp}"
+        _shadow_text(draw, (x0, int(98 * s)), line, font_sm, C_MUTED)
+        quote = snap.verdict.quote if snap else "Warming up the channel..."
+        _shadow_text(draw, (x0, int(114 * s)), quote[:54], font_xs, C_GOLD)
 
     def _draw_mini(self, img: Image.Image, draw: ImageDraw.ImageDraw, snap: Optional[Snapshot]) -> None:
         s = self.scale
@@ -414,6 +380,8 @@ class Overlay:
         font_n = _font("Nunito-ExtraBold.ttf", int(36 * s))
         font_h = _font("Nunito-ExtraBold.ttf", int(16 * s))
         _shadow_text(draw, (int(18 * s), int(12 * s)), "JUJUNE · LAG WATCH", font_h, C_CYAN)
+        ver = f"v{__version__}"
+        _shadow_text(draw, (int(18 * s) + font_h.getlength("JUJUNE · LAG WATCH") + 10, int(16 * s)), ver, font_xs, C_MUTED)
         self._btn(draw, (w - int(96 * s), int(12 * s)), "–", "mini", int(22 * s), int(22 * s))
         self._btn(draw, (w - int(66 * s), int(12 * s)), "▾", "expand", int(22 * s), int(22 * s))
         self._btn(draw, (w - int(36 * s), int(12 * s)), "×", "close", int(22 * s), int(22 * s))
@@ -572,10 +540,14 @@ class Overlay:
         y = int(852 * s)
         if not events:
             _shadow_text(draw, (gx, y), "Quiet for now. Spikes land here.", font_xs, C_MUTED)
-        for event in events[:4]:
+        for event in events[:3]:
             line = f"{event.get('when', '')}  {event.get('title', '')}"
             _shadow_text(draw, (gx, y), line[:72], font_xs, C_WARN)
             y += int(16 * s)
+
+        if self.update_detail:
+            _shadow_text(draw, (gx, int(920 * s)), self.update_detail[:88], font_xs, C_WARN)
+        self._btn(draw, (gx, int(942 * s)), self.update_label[:28], "update", gw, int(28 * s))
 
     def _temp_pct(self, temps: dict[str, float]) -> float:
         if temps and temps.get("cpu") is not None:
