@@ -81,26 +81,26 @@ def _fmt_ms(value: Optional[float]) -> str:
     return f"{value:.0f}" if value >= 10 else f"{value:.1f}"
 
 
+def _cpu_temp_value(temps: dict[str, float]) -> str:
+    if temps and temps.get("cpu") is not None:
+        return f"{temps['cpu']:.0f}°C"
+    return "n/a"
+
+
 def _temp_label(temps: dict[str, float]) -> str:
-    if not temps:
-        return "temp n/a"
-    gpu = temps.get("gpu")
-    cpu = None
-    for key, value in temps.items():
-        low = key.lower()
-        if any(token in low for token in ("cpu", "package", "tctl", "ccd", "core")):
-            cpu = value
-            break
-    if cpu is not None and gpu is not None:
-        return f"{cpu:.0f}/{gpu:.0f}°"
-    if gpu is not None:
-        return f"GPU {gpu:.0f}°"
-    if cpu is not None:
-        return f"CPU {cpu:.0f}°"
-    real = [v for k, v in temps.items() if "pressure" not in k.lower() and v > 20]
-    if not real:
-        return "temp n/a"
-    return f"{max(real):.0f}°"
+    cpu = temps.get("cpu") if temps else None
+    gpu = temps.get("gpu") if temps else None
+    if cpu is None and temps:
+        for key, value in temps.items():
+            low = key.lower()
+            if "gpu" in low:
+                continue
+            if any(token in low for token in ("cpu", "package", "tctl", "ccd", "core", "acpi", "zone")):
+                cpu = value
+                break
+    cpu_s = f"CPU {cpu:.0f}°" if cpu is not None else "CPU n/a"
+    gpu_s = f"GPU {gpu:.0f}°" if gpu is not None else "GPU n/a"
+    return f"{cpu_s}  {gpu_s}"
 
 
 class Overlay:
@@ -497,7 +497,7 @@ class Overlay:
             ("GPU", gpu_s, gpu if gpu is not None else 0, 90),
             ("RAM", f"{(sysn.ram_pct if sysn else 0):.0f}%", sysn.ram_pct if sysn else 0, 92),
             ("Disk", disk_value, disk_metric, 80),
-            ("Temp", _temp_label(sysn.temps if sysn else {}), self._temp_pct(sysn.temps if sysn else {}), 88),
+            ("CPU temp", _cpu_temp_value(sysn.temps if sysn else {}), self._temp_pct(sysn.temps if sysn else {}), 88),
         ]
         y = int(622 * s)
         col_w = half
@@ -539,7 +539,9 @@ class Overlay:
             y += int(16 * s)
 
     def _temp_pct(self, temps: dict[str, float]) -> float:
-        real = [v for k, v in temps.items() if "pressure" not in k.lower() and v > 20]
+        if temps and temps.get("cpu") is not None:
+            return float(temps["cpu"])
+        real = [v for k, v in temps.items() if "gpu" not in k.lower() and "pressure" not in k.lower() and v > 20]
         if not real:
             return 0.0
         return max(real)

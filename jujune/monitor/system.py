@@ -25,7 +25,16 @@ $temps = @{}
 function Add-Temp([string]$name, $value) {
   if ($null -eq $value -or $name -eq '') { return }
   try { $c = [double]$value } catch { return }
-  if ($c -gt 15 -and $c -lt 125) { $temps[$name] = [Math]::Round($c, 1) }
+  if ($c -gt 15 -and $c -lt 125) {
+    $temps[$name] = [Math]::Round($c, 1)
+    $n = $name.ToLower()
+    if ($n -notmatch 'gpu' -and $n -match 'cpu|package|tctl|ccd|core|acpi|zone|thermal') {
+      $prefer = $n -match 'package|tctl|cpu package|cpu die'
+      if ($prefer -or -not $temps.ContainsKey('cpu')) {
+        $temps['cpu'] = [Math]::Round($c, 1)
+      }
+    }
+  }
 }
 try {
   Get-CimInstance -Namespace root/LibreHardwareMonitor -ClassName Sensor |
@@ -48,6 +57,16 @@ try {
       if ($hi -and $hi -gt 1000) { Add-Temp 'zone' (($hi / 10) - 273.15) }
       elseif ($_.Temperature) { Add-Temp 'zone' ($_.Temperature - 273) }
     }
+} catch {}
+try {
+  $samples = (Get-Counter '\Thermal Zone Information(*)\High Precision Temperature' -ErrorAction SilentlyContinue).CounterSamples
+  $i = 0
+  foreach ($s in $samples) {
+    $k = [double]$s.CookedValue
+    if ($k -gt 2000) { Add-Temp "cpu_zone$i" (($k / 10) - 273.15) }
+    elseif ($k -gt 250) { Add-Temp "cpu_zone$i" ($k - 273.15) }
+    $i++
+  }
 } catch {}
 $gpu = $null
 try {
@@ -114,6 +133,34 @@ def _nvidia() -> tuple[Optional[float], Optional[float]]:
         return temp, util
     except ValueError:
         return None, None
+
+
+def _normalize_temps(temps: dict[str, float]) -> dict[str, float]:
+    if not temps:
+        return temps
+    cpu = temps.get("cpu")
+    ranked: list[tuple[int, float]] = []
+    for key, value in temps.items():
+        if value is None or value <= 20 or value >= 125:
+            continue
+        low = key.lower()
+        if "gpu" in low:
+            continue
+        score = 0
+        if "package" in low or "tctl" in low or low == "cpu":
+            score = 5
+        elif "ccd" in low or "die" in low:
+            score = 4
+        elif "cpu" in low or "core" in low:
+            score = 3
+        elif "acpi" in low or "zone" in low or "thermal" in low:
+            score = 2
+        if score:
+            ranked.append((score, float(value)))
+    if ranked and cpu is None:
+        ranked.sort(reverse=True)
+        temps["cpu"] = ranked[0][1]
+    return temps
 
 
 def _windows_hw() -> tuple[dict[str, float], Optional[float], Optional[float]]:
@@ -241,10 +288,11 @@ class SystemMonitor:
             if sys.platform == "win32":
                 win_temps, win_gpu, win_disk = _windows_hw()
             temps.update(win_temps)
-            self._win_disk = win_disk
             gpu_temp, gpu_util = _nvidia()
             if gpu_temp is not None:
                 temps["gpu"] = gpu_temp
+            temps = _normalize_temps(temps)
+            self._win_disk = win_disk
             if gpu_util is None:
                 gpu_util = win_gpu
             self._gpu_util = gpu_util
