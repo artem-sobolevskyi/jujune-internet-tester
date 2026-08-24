@@ -12,6 +12,7 @@ from typing import Optional
 
 from jujune.config import load_config
 from jujune.monitor.diagnose import DiagnoseState, Verdict, diagnose
+from jujune.monitor.graphs import GraphSampler, GraphSnapshot
 from jujune.monitor.net import NetMonitor, NetSnapshot
 from jujune.monitor.system import SystemMonitor, SystemSnapshot
 from jujune.paths import data_dir
@@ -24,6 +25,7 @@ class Snapshot:
     sys: SystemSnapshot
     verdict: Verdict
     events: list[dict]
+    graphs: GraphSnapshot
 
 
 class Engine:
@@ -36,6 +38,7 @@ class Engine:
             extra_hosts=extra,
         )
         self.sys = SystemMonitor()
+        self.graphs = GraphSampler()
         self.state = DiagnoseState()
         self._lock = threading.Lock()
         self._snap: Optional[Snapshot] = None
@@ -49,9 +52,11 @@ class Engine:
     def start(self) -> None:
         self._thread = threading.Thread(target=self._loop, name="jujune-engine", daemon=True)
         self._thread.start()
+        self.graphs.start()
 
     def stop(self) -> None:
         self._running = False
+        self.graphs.stop()
 
     def snapshot(self) -> Optional[Snapshot]:
         with self._lock:
@@ -91,12 +96,16 @@ class Engine:
             self._append_jsonl(event)
             self._last_logged_cause = verdict.cause
             self._last_logged_at = now
+        graphs = self.graphs.snapshot()
+        if graphs.gpu_pct is not None:
+            sysn.gpu_util = graphs.gpu_pct
         snap = Snapshot(
             ts=now,
             net=net,
             sys=sysn,
             verdict=verdict,
             events=list(self._events),
+            graphs=graphs,
         )
         self._append_csv(snap)
         with self._lock:
@@ -136,6 +145,9 @@ class Engine:
                         "disk_mb",
                         "temp",
                         "gpu_temp",
+                        "gpu_util",
+                        "frametime_ms",
+                        "fps",
                         "level",
                         "cause",
                     ]
@@ -154,6 +166,9 @@ class Engine:
                     round(snap.sys.disk_read_mb + snap.sys.disk_write_mb, 1),
                     cpu_t,
                     gpu_t,
+                    snap.sys.gpu_util,
+                    snap.graphs.frametime_ms,
+                    snap.graphs.fps,
                     snap.verdict.level,
                     snap.verdict.cause,
                 ]

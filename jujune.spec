@@ -1,10 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 
+binaries = []
+if os.path.exists(os.path.join('vendor', 'PresentMon.exe')):
+    binaries.append((os.path.join('vendor', 'PresentMon.exe'), '.'))
+
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,
     datas=[('assets', 'assets')],
     hiddenimports=[
         'pystray._win32',

@@ -22,10 +22,11 @@ C_LAG = (255, 75, 120, 255)
 C_TEXT = (244, 234, 248, 255)
 C_MUTED = (179, 155, 184, 255)
 C_DIM = (40, 22, 56, 255)
+C_GPU = (186, 140, 255, 255)
 
-COMPACT = (456, 136)
-EXPANDED = (456, 688)
-MINI = (168, 168)
+COMPACT = (680, 304)
+EXPANDED = (780, 940)
+MINI = (188, 188)
 
 
 _FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
@@ -308,10 +309,11 @@ class Overlay:
 
     def _draw_compact(self, img: Image.Image, draw: ImageDraw.ImageDraw, snap: Optional[Snapshot]) -> None:
         s = self.scale
-        pose = self._pose(snap, int(124 * s))
-        img.alpha_composite(pose, (int(8 * s), int(6 * s)))
-        self.hits.append(("expand", (int(8 * s), int(6 * s), int(8 * s) + pose.width, int(6 * s) + pose.height)))
-        x0 = int(118 * s)
+        w, _h = img.size
+        pose = self._pose(snap, int(132 * s))
+        img.alpha_composite(pose, (int(8 * s), int(8 * s)))
+        self.hits.append(("expand", (int(8 * s), int(8 * s), int(8 * s) + pose.width, int(8 * s) + pose.height)))
+        x0 = int(128 * s)
         font_xs = _font("Nunito-Bold.ttf", int(11 * s))
         font_sm = _font("Nunito-SemiBold.ttf", int(12 * s))
         font_n = _font("Nunito-ExtraBold.ttf", int(28 * s))
@@ -320,19 +322,58 @@ class Overlay:
         title = snap.verdict.title if snap else "STARTING"
         color = _level_color(snap.verdict.level if snap else "ok")
         _shadow_text(draw, (x0 + int(78 * s), int(8 * s)), title, font_xs, color)
-        self._btn(draw, (int(392 * s), int(8 * s)), "–", "mini", int(22 * s), int(20 * s))
-        self._btn(draw, (int(420 * s), int(8 * s)), "×", "close", int(22 * s), int(20 * s))
+        self._btn(draw, (w - int(64 * s), int(8 * s)), "–", "mini", int(22 * s), int(20 * s))
+        self._btn(draw, (w - int(36 * s), int(8 * s)), "×", "close", int(22 * s), int(20 * s))
 
         ping = _fmt_ms(snap.net.ping_ms if snap else None)
         _shadow_text(draw, (x0, int(26 * s)), ping, font_n, color)
         _shadow_text(draw, (x0 + int(font_n.getlength(ping) + 6), int(38 * s)), "ms", font_xs, C_MUTED)
         jit = snap.net.jitter_ms if snap else 0
         loss = snap.net.loss_pct if snap else 0
-        _shadow_text(draw, (x0 + int(96 * s), int(32 * s)), f"jit {jit:.0f}   loss {loss:.0f}%", font_sm, C_TEXT)
+        graphs = snap.graphs if snap else None
+        gpu = graphs.gpu_pct if graphs and graphs.gpu_pct is not None else (snap.sys.gpu_util if snap else None)
+        cpu = graphs.cpu_pct if graphs else (snap.sys.cpu_pct if snap else 0)
+        fps = graphs.fps if graphs else None
+        ft = graphs.frametime_ms if graphs else None
+        gpu_s = f"{gpu:.0f}%" if gpu is not None else "n/a"
+        ft_s = f"{ft:.1f}ms" if ft is not None else "n/a"
+        fps_s = f"{fps:.0f} FPS" if fps is not None else ""
+        _shadow_text(
+            draw,
+            (x0 + int(96 * s), int(28 * s)),
+            f"jit {jit:.0f}  loss {loss:.0f}%  CPU {cpu:.0f}%  GPU {gpu_s}",
+            font_sm,
+            C_TEXT,
+        )
+        _shadow_text(draw, (x0 + int(96 * s), int(46 * s)), f"frame {ft_s}  {fps_s}".strip(), font_xs, C_GOLD)
 
         hist = snap.net.history if snap else []
-        self._sparkline(draw, int(x0), int(66 * s), int(250 * s), int(28 * s), hist, color)
-        cpu = snap.sys.cpu_pct if snap else 0
+        self._graph(draw, x0, int(66 * s), w - x0 - int(14 * s), int(44 * s), hist, color, "ping", "collecting ping...")
+        gap = int(8 * s)
+        gw = (w - x0 - int(14 * s) - 2 * gap) // 3
+        gy = int(116 * s)
+        gh = int(118 * s)
+        cpu_hist = graphs.cpu_history if graphs else []
+        gpu_hist = graphs.gpu_history if graphs else []
+        ft_hist = graphs.frametime_history if graphs else []
+        self._graph(draw, x0, gy, gw, gh, cpu_hist, C_CYAN, f"CPU {cpu:.0f}%", "cpu...", 0, 100)
+        self._graph(draw, x0 + gw + gap, gy, gw, gh, gpu_hist, C_GPU, f"GPU {gpu_s}", "gpu...", 0, 100)
+        self._graph(
+            draw,
+            x0 + 2 * (gw + gap),
+            gy,
+            gw,
+            gh,
+            ft_hist,
+            C_GOLD,
+            f"FT {ft_s} {fps_s}".strip(),
+            "waiting for game...",
+            0,
+            50,
+            guides=[(16.67, "60", (92, 255, 196, 140)), (33.33, "30", (255, 75, 120, 140))],
+        )
+        quote = snap.verdict.quote if snap else "Warming up the channel..."
+        _shadow_text(draw, (x0, int(242 * s)), quote[:62], font_xs, C_GOLD)
         if snap and snap.sys.disk_util is not None:
             disk_s = f"DISK {snap.sys.disk_util:.0f}%"
         elif snap:
@@ -340,10 +381,8 @@ class Overlay:
         else:
             disk_s = "DISK —"
         temp = _temp_label(snap.sys.temps if snap else {})
-        line = f"CPU {cpu:.0f}%   {disk_s}   {temp}"
-        _shadow_text(draw, (x0, int(98 * s)), line, font_sm, C_MUTED)
-        quote = snap.verdict.quote if snap else "Warming up the channel..."
-        _shadow_text(draw, (x0, int(114 * s)), quote[:54], font_xs, C_GOLD)
+        app = graphs.frame_app if graphs and graphs.frame_app else ""
+        _shadow_text(draw, (x0, int(262 * s)), f"{disk_s}   {temp}   {app}"[:70], font_sm, C_MUTED)
 
     def _draw_mini(self, img: Image.Image, draw: ImageDraw.ImageDraw, snap: Optional[Snapshot]) -> None:
         s = self.scale
@@ -359,40 +398,84 @@ class Overlay:
 
     def _draw_expanded(self, img: Image.Image, draw: ImageDraw.ImageDraw, snap: Optional[Snapshot]) -> None:
         s = self.scale
+        w, _h = img.size
         font_xs = _font("Nunito-Bold.ttf", int(11 * s))
         font_sm = _font("Nunito-SemiBold.ttf", int(13 * s))
         font_n = _font("Nunito-ExtraBold.ttf", int(36 * s))
         font_h = _font("Nunito-ExtraBold.ttf", int(16 * s))
         _shadow_text(draw, (int(18 * s), int(12 * s)), "JUJUNE · LAG WATCH", font_h, C_CYAN)
-        self._btn(draw, (int(360 * s), int(12 * s)), "–", "mini", int(22 * s), int(22 * s))
-        self._btn(draw, (int(392 * s), int(12 * s)), "▾", "expand", int(22 * s), int(22 * s))
-        self._btn(draw, (int(424 * s), int(12 * s)), "×", "close", int(22 * s), int(22 * s))
+        self._btn(draw, (w - int(96 * s), int(12 * s)), "–", "mini", int(22 * s), int(22 * s))
+        self._btn(draw, (w - int(66 * s), int(12 * s)), "▾", "expand", int(22 * s), int(22 * s))
+        self._btn(draw, (w - int(36 * s), int(12 * s)), "×", "close", int(22 * s), int(22 * s))
 
-        pose = self._pose(snap, int(248 * s))
-        img.alpha_composite(pose, (int(16 * s), int(40 * s)))
+        pose = self._pose(snap, int(220 * s))
+        img.alpha_composite(pose, (int(16 * s), int(42 * s)))
         color = _level_color(snap.verdict.level if snap else "ok")
-        bx, by = int(168 * s), int(48 * s)
-        draw.rounded_rectangle((bx, by, int(438 * s), int(168 * s)), 16, fill=C_PANEL, outline=color)
+        bx, by = int(200 * s), int(44 * s)
+        draw.rounded_rectangle((bx, by, w - int(18 * s), int(200 * s)), 16, fill=C_PANEL, outline=color)
         title = snap.verdict.title if snap else "STARTING"
         _shadow_text(draw, (bx + 14, by + 10), title, font_h, color)
         ping = _fmt_ms(snap.net.ping_ms if snap else None)
         _shadow_text(draw, (bx + 14, by + 34), ping, font_n, color)
         _shadow_text(draw, (bx + 14 + font_n.getlength(ping) + 8, by + 54), "ms ping", font_sm, C_MUTED)
+        graphs = snap.graphs if snap else None
+        gpu = graphs.gpu_pct if graphs and graphs.gpu_pct is not None else (snap.sys.gpu_util if snap else None)
+        cpu = graphs.cpu_pct if graphs else (snap.sys.cpu_pct if snap else 0)
+        fps = graphs.fps if graphs else None
+        ft = graphs.frametime_ms if graphs else None
+        gpu_s = f"{gpu:.0f}%" if gpu is not None else "n/a"
+        ft_s = f"{ft:.1f} ms" if ft is not None else "n/a"
+        fps_s = f"{fps:.0f} FPS" if fps is not None else "FPS n/a"
+        _shadow_text(draw, (bx + 14, by + 88), f"CPU {cpu:.0f}%   GPU {gpu_s}   {ft_s}   {fps_s}", font_sm, C_TEXT)
         quote = snap.verdict.quote if snap else "Warming up the channel..."
-        y = by + 92
-        for line in _wrap(quote, font_sm, int(240 * s))[:3]:
+        y = by + 112
+        for line in _wrap(quote, font_sm, w - bx - int(40 * s))[:3]:
             _shadow_text(draw, (bx + 14, y), line, font_sm, C_GOLD)
             y += int(16 * s)
 
         detail = snap.verdict.detail if snap else "Collecting first samples of network, disk and temps."
-        y = int(176 * s)
-        for line in _wrap(detail, font_sm, int(420 * s))[:3]:
+        y = int(212 * s)
+        for line in _wrap(detail, font_sm, w - int(36 * s))[:2]:
             _shadow_text(draw, (int(18 * s), y), line, font_xs, C_TEXT)
             y += int(15 * s)
 
         hist = snap.net.history if snap else []
-        self._sparkline(draw, int(18 * s), int(228 * s), int(420 * s), int(56 * s), hist, color)
-        _shadow_text(draw, (int(18 * s), int(286 * s)), "ping, last ~90s", font_xs, C_MUTED)
+        gx = int(18 * s)
+        gw = w - int(36 * s)
+        self._graph(draw, gx, int(248 * s), gw, int(88 * s), hist, color, "PING · last ~90s", "collecting ping...")
+        cpu_hist = graphs.cpu_history if graphs else []
+        gpu_hist = graphs.gpu_history if graphs else []
+        ft_hist = graphs.frametime_history if graphs else []
+        half = (gw - int(10 * s)) // 2
+        self._graph(draw, gx, int(344 * s), half, int(120 * s), cpu_hist, C_CYAN, f"CPU {cpu:.0f}%", "cpu...", 0, 100)
+        self._graph(
+            draw,
+            gx + half + int(10 * s),
+            int(344 * s),
+            half,
+            int(120 * s),
+            gpu_hist,
+            C_GPU,
+            f"GPU {gpu_s}",
+            "gpu...",
+            0,
+            100,
+        )
+        app = graphs.frame_app if graphs and graphs.frame_app else "game"
+        self._graph(
+            draw,
+            gx,
+            int(472 * s),
+            gw,
+            int(140 * s),
+            ft_hist,
+            C_GOLD,
+            f"FRAME TIME  {ft_s}   {fps_s}   {app}",
+            "waiting for game presents...",
+            0,
+            50,
+            guides=[(16.67, "60", (92, 255, 196, 140)), (33.33, "30", (255, 75, 120, 140))],
+        )
 
         net = snap.net if snap else None
         sysn = snap.sys if snap else None
@@ -403,20 +486,25 @@ class Overlay:
         else:
             disk_value = f"{disk_mb:.0f} MB/s"
             disk_metric = min(100.0, disk_mb / 2.0)
-        rows = [
+        left_rows = [
             ("WAN", f"{_fmt_ms(net.ping_ms if net else None)} ms", net.ping_ms if net else 0, 80),
             ("Router", f"{_fmt_ms(net.gateway_ms if net else None)} ms", net.gateway_ms if net else 0, 40),
             ("Jitter", f"{(net.jitter_ms if net else 0):.0f} ms", net.jitter_ms if net else 0, 25),
             ("Loss", f"{(net.loss_pct if net else 0):.0f}%", net.loss_pct if net else 0, 5),
-            ("CPU", f"{(sysn.cpu_pct if sysn else 0):.0f}%", sysn.cpu_pct if sysn else 0, 90),
+        ]
+        right_rows = [
+            ("CPU", f"{cpu:.0f}%", cpu, 90),
+            ("GPU", gpu_s, gpu if gpu is not None else 0, 90),
             ("RAM", f"{(sysn.ram_pct if sysn else 0):.0f}%", sysn.ram_pct if sysn else 0, 92),
             ("Disk", disk_value, disk_metric, 80),
             ("Temp", _temp_label(sysn.temps if sysn else {}), self._temp_pct(sysn.temps if sysn else {}), 88),
         ]
-        y = int(308 * s)
-        for label, value, metric, warn_at in rows:
-            self._meter_row(draw, int(18 * s), y, int(420 * s), label, value, metric, warn_at, s)
-            y += int(32 * s)
+        y = int(622 * s)
+        col_w = half
+        for i, row in enumerate(left_rows):
+            self._meter_row(draw, gx, y + i * int(32 * s), col_w, *row, s)
+        for i, row in enumerate(right_rows):
+            self._meter_row(draw, gx + half + int(10 * s), y + i * int(32 * s), col_w, *row, s)
 
         extra = ""
         if net and net.extra_ms:
@@ -426,28 +514,28 @@ class Overlay:
         mode = net.ping_mode.upper() if net else "—"
         _shadow_text(
             draw,
-            (int(18 * s), int(566 * s)),
-            f"{wifi} · {mode} · DNS {_fmt_ms(net.dns_ms if net else None)} ms{extra}"[:62],
+            (gx, int(790 * s)),
+            f"{wifi} · {mode} · DNS {_fmt_ms(net.dns_ms if net else None)} ms{extra}"[:88],
             font_xs,
             C_MUTED,
         )
         if sysn:
             _shadow_text(
                 draw,
-                (int(18 * s), int(582 * s)),
+                (gx, int(806 * s)),
                 f"top CPU: {sysn.top_cpu[:28]} · RAM: {sysn.top_ram[:22]}",
                 font_xs,
                 C_MUTED,
             )
 
-        _shadow_text(draw, (int(18 * s), int(606 * s)), "LAST HITS", font_h, C_STROKE)
+        _shadow_text(draw, (gx, int(830 * s)), "LAST HITS", font_h, C_STROKE)
         events = snap.events if snap else []
-        y = int(628 * s)
+        y = int(852 * s)
         if not events:
-            _shadow_text(draw, (int(18 * s), y), "Quiet for now. Spikes land here.", font_xs, C_MUTED)
-        for event in events[:3]:
+            _shadow_text(draw, (gx, y), "Quiet for now. Spikes land here.", font_xs, C_MUTED)
+        for event in events[:4]:
             line = f"{event.get('when', '')}  {event.get('title', '')}"
-            _shadow_text(draw, (int(18 * s), y), line[:58], font_xs, C_WARN)
+            _shadow_text(draw, (gx, y), line[:72], font_xs, C_WARN)
             y += int(16 * s)
 
     def _temp_pct(self, temps: dict[str, float]) -> float:
@@ -476,36 +564,70 @@ class Overlay:
         if fw > 6:
             draw.rounded_rectangle((x, bar_y, x + fw, bar_y + int(7 * s)), 4, fill=color)
 
-    def _sparkline(self, draw, x, y, w, h, history: list, color) -> None:
+    def _graph(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x: int,
+        y: int,
+        w: int,
+        h: int,
+        history: list,
+        color,
+        title: str,
+        empty: str,
+        y_min: Optional[float] = None,
+        y_max: Optional[float] = None,
+        guides: Optional[list] = None,
+    ) -> None:
         draw.rounded_rectangle((x, y, x + w, y + h), 10, fill=C_PANEL, outline=C_DIM)
-        vals = []
-        last = 20.0
-        for item in history[-80:]:
+        font = _font("Nunito-Bold.ttf", 11)
+        _shadow_text(draw, (x + 8, y + 4), title, font, C_MUTED)
+        vals: list[Optional[float]] = []
+        for item in history[-120:]:
             if item is None:
                 vals.append(None)
             else:
-                last = float(item)
-                vals.append(last)
-        if len(vals) < 2:
-            font = _font("Nunito-Bold.ttf", 11)
-            draw.text((x + 10, y + h / 2 - 8), "collecting ping graph...", font=font, fill=C_MUTED)
-            return
+                try:
+                    vals.append(float(item))
+                except (TypeError, ValueError):
+                    vals.append(None)
         present = [v for v in vals if v is not None]
-        if not present:
+        if len(present) < 2:
+            draw.text((x + 10, y + h / 2 - 6), empty, font=font, fill=C_MUTED)
             return
-        lo = min(present)
-        hi = max(max(present), lo + 8)
+        lo = min(present) if y_min is None else y_min
+        hi = max(present) if y_max is None else y_max
+        if y_min is None:
+            lo = min(lo, min(present))
+        if y_max is None:
+            hi = max(max(present), lo + 1)
+        if hi <= lo:
+            hi = lo + 1
+        plot_top = y + 20
+        plot_bot = y + h - 6
+        plot_h = max(8, plot_bot - plot_top)
+        if guides:
+            for gval, glabel, gcolor in guides:
+                if gval < lo or gval > hi:
+                    continue
+                gy = plot_bot - (gval - lo) / (hi - lo) * plot_h
+                draw.line([(x + 6, gy), (x + w - 6, gy)], fill=gcolor, width=1)
+                draw.text((x + w - 28, gy - 8), glabel, font=font, fill=gcolor)
         pts = []
         for i, v in enumerate(vals):
             if v is None:
                 continue
+            clamped = min(hi, max(lo, v))
             px = x + 6 + i * (w - 12) / max(1, len(vals) - 1)
-            py = y + h - 6 - (v - lo) / (hi - lo) * (h - 12)
+            py = plot_bot - (clamped - lo) / (hi - lo) * plot_h
             pts.append((px, py))
         if len(pts) >= 2:
-            fill = list(pts) + [(pts[-1][0], y + h - 6), (pts[0][0], y + h - 6)]
-            draw.polygon(fill, fill=(color[0], color[1], color[2], 45))
+            fill = list(pts) + [(pts[-1][0], plot_bot), (pts[0][0], plot_bot)]
+            draw.polygon(fill, fill=(color[0], color[1], color[2], 50))
             draw.line(pts, fill=color, width=2)
+
+    def _sparkline(self, draw, x, y, w, h, history: list, color) -> None:
+        self._graph(draw, x, y, w, h, history, color, "", "collecting ping graph...")
 
     def loop(self) -> None:
         self.root.mainloop()
