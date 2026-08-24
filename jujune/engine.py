@@ -148,6 +148,7 @@ class Engine:
                         "gpu_util",
                         "frametime_ms",
                         "fps",
+                        "cpu_mhz",
                         "level",
                         "cause",
                     ]
@@ -169,6 +170,7 @@ class Engine:
                     snap.sys.gpu_util,
                     snap.graphs.frametime_ms,
                     snap.graphs.fps,
+                    snap.graphs.cpu_mhz,
                     snap.verdict.level,
                     snap.verdict.cause,
                 ]

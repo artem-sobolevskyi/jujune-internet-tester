@@ -82,16 +82,79 @@ def _app_name(raw: str) -> str:
     return name or raw.lower()
 
 
+def _win_cpu_mhz() -> tuple[Optional[float], Optional[float]]:
+    import ctypes
+    from ctypes import wintypes
+
+    class PROCESSOR_POWER_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("Number", wintypes.ULONG),
+            ("MaxMhz", wintypes.ULONG),
+            ("CurrentMhz", wintypes.ULONG),
+            ("MhzLimit", wintypes.ULONG),
+            ("MaxIdleState", wintypes.ULONG),
+            ("CurrentIdleState", wintypes.ULONG),
+        ]
+
+    ALL_PROCESSOR_GROUPS = 0xFFFF
+    try:
+        nproc = int(ctypes.windll.kernel32.GetActiveProcessorCount(ALL_PROCESSOR_GROUPS))
+    except Exception:
+        nproc = 0
+    if nproc <= 0:
+        nproc = os.cpu_count() or 1
+    call = ctypes.windll.powrprof.CallNtPowerInformation
+    call.restype = ctypes.c_long
+    for size in (nproc, nproc * 2):
+        buf = (PROCESSOR_POWER_INFORMATION * size)()
+        status = call(11, None, 0, ctypes.byref(buf), ctypes.sizeof(buf))
+        if status == 0:
+            currents = [int(item.CurrentMhz) for item in buf if item.CurrentMhz]
+            maxes = [int(item.MaxMhz) for item in buf if item.MaxMhz]
+            cur = float(max(currents)) if currents else None
+            mx = float(max(maxes)) if maxes else None
+            return cur, mx
+    return None, None
+
+
+def read_cpu_mhz() -> tuple[Optional[float], Optional[float]]:
+    if sys.platform == "win32":
+        try:
+            cur, mx = _win_cpu_mhz()
+            if cur:
+                return cur, mx
+        except Exception:
+            pass
+    try:
+        info = psutil.cpu_freq()
+    except Exception:
+        return None, None
+    if not info:
+        return None, None
+    cur = float(info.current) if info.current else None
+    mx = float(info.max) if info.max else None
+    if cur is not None and 0 < cur < 20:
+        cur *= 1000.0
+    if mx is not None and 0 < mx < 20:
+        mx *= 1000.0
+    if cur is not None and cur <= 0:
+        cur = None
+    return cur, mx
+
+
 @dataclass
 class GraphSnapshot:
     cpu_history: list[float]
     gpu_history: list[float]
     frametime_history: list[Optional[float]]
+    mhz_history: list[Optional[float]]
     cpu_pct: float
     gpu_pct: Optional[float]
     frametime_ms: Optional[float]
     fps: Optional[float]
     frame_app: str
+    cpu_mhz: Optional[float]
+    cpu_mhz_max: Optional[float]
 
 
 class GraphSampler:
@@ -99,10 +162,13 @@ class GraphSampler:
         self.cpu: deque[float] = deque(maxlen=120)
         self.gpu: deque[Optional[float]] = deque(maxlen=120)
         self.frametime: deque[Optional[float]] = deque(maxlen=180)
+        self.mhz: deque[Optional[float]] = deque(maxlen=120)
         self._lock = threading.Lock()
         self._running = True
         self._gpu_pct: Optional[float] = None
         self._cpu_pct = 0.0
+        self._cpu_mhz: Optional[float] = None
+        self._cpu_mhz_max: Optional[float] = None
         self._ft_ms: Optional[float] = None
         self._fps: Optional[float] = None
         self._frame_app = ""
@@ -138,19 +204,27 @@ class GraphSampler:
                 cpu_history=list(self.cpu),
                 gpu_history=list(self.gpu),
                 frametime_history=list(self.frametime),
+                mhz_history=list(self.mhz),
                 cpu_pct=self._cpu_pct,
                 gpu_pct=self._gpu_pct,
                 frametime_ms=self._ft_ms,
                 fps=self._fps,
                 frame_app=self._frame_app,
+                cpu_mhz=self._cpu_mhz,
+                cpu_mhz_max=self._cpu_mhz_max,
             )
 
     def _cpu_loop(self) -> None:
         while self._running:
             value = float(psutil.cpu_percent(interval=0.25))
+            mhz, mhz_max = read_cpu_mhz()
             with self._lock:
                 self._cpu_pct = value
                 self.cpu.append(value)
+                self._cpu_mhz = mhz
+                if mhz_max:
+                    self._cpu_mhz_max = mhz_max
+                self.mhz.append(mhz)
 
     def _gpu_loop(self) -> None:
         while self._running:

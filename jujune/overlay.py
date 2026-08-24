@@ -81,6 +81,15 @@ def _fmt_ms(value: Optional[float]) -> str:
     return f"{value:.0f}" if value >= 10 else f"{value:.1f}"
 
 
+def _fmt_ghz(mhz: Optional[float], compact: bool = False) -> str:
+    if mhz is None or mhz <= 0:
+        return "n/a"
+    ghz = mhz / 1000.0
+    if compact:
+        return f"{ghz:.1f}GHz" if ghz >= 10 else f"{ghz:.2f}GHz"
+    return f"{ghz:.1f} GHz" if ghz >= 10 else f"{ghz:.2f} GHz"
+
+
 def _cpu_temp_value(temps: dict[str, float]) -> str:
     if temps and temps.get("cpu") is not None:
         return f"{temps['cpu']:.0f}°C"
@@ -338,10 +347,11 @@ class Overlay:
         gpu_s = f"{gpu:.0f}%" if gpu is not None else "n/a"
         ft_s = f"{ft:.1f}ms" if ft is not None else "n/a"
         fps_s = f"{fps:.0f} FPS" if fps is not None else ""
+        clock_s = _fmt_ghz(graphs.cpu_mhz if graphs else None, compact=True)
         _shadow_text(
             draw,
             (x0 + int(96 * s), int(28 * s)),
-            f"jit {jit:.0f}  loss {loss:.0f}%  CPU {cpu:.0f}%  GPU {gpu_s}",
+            f"jit {jit:.0f}  loss {loss:.0f}%  CPU {cpu:.0f}%  {clock_s}  GPU {gpu_s}",
             font_sm,
             C_TEXT,
         )
@@ -356,7 +366,7 @@ class Overlay:
         cpu_hist = graphs.cpu_history if graphs else []
         gpu_hist = graphs.gpu_history if graphs else []
         ft_hist = graphs.frametime_history if graphs else []
-        self._graph(draw, x0, gy, gw, gh, cpu_hist, C_CYAN, f"CPU {cpu:.0f}%", "cpu...", 0, 100)
+        self._graph(draw, x0, gy, gw, gh, cpu_hist, C_CYAN, f"CPU {cpu:.0f}% {clock_s}", "cpu...", 0, 100)
         self._graph(draw, x0 + gw + gap, gy, gw, gh, gpu_hist, C_GPU, f"GPU {gpu_s}", "gpu...", 0, 100)
         self._graph(
             draw,
@@ -426,7 +436,16 @@ class Overlay:
         gpu_s = f"{gpu:.0f}%" if gpu is not None else "n/a"
         ft_s = f"{ft:.1f} ms" if ft is not None else "n/a"
         fps_s = f"{fps:.0f} FPS" if fps is not None else "FPS n/a"
-        _shadow_text(draw, (bx + 14, by + 88), f"CPU {cpu:.0f}%   GPU {gpu_s}   {ft_s}   {fps_s}", font_sm, C_TEXT)
+        mhz = graphs.cpu_mhz if graphs else None
+        mhz_max = graphs.cpu_mhz_max if graphs else None
+        clock_s = _fmt_ghz(mhz)
+        _shadow_text(
+            draw,
+            (bx + 14, by + 88),
+            f"CPU {cpu:.0f}%   {clock_s}   GPU {gpu_s}   {ft_s}   {fps_s}",
+            font_sm,
+            C_TEXT,
+        )
         quote = snap.verdict.quote if snap else "Warming up the channel..."
         y = by + 112
         for line in _wrap(quote, font_sm, w - bx - int(40 * s))[:3]:
@@ -447,7 +466,19 @@ class Overlay:
         gpu_hist = graphs.gpu_history if graphs else []
         ft_hist = graphs.frametime_history if graphs else []
         half = (gw - int(10 * s)) // 2
-        self._graph(draw, gx, int(344 * s), half, int(120 * s), cpu_hist, C_CYAN, f"CPU {cpu:.0f}%", "cpu...", 0, 100)
+        self._graph(
+            draw,
+            gx,
+            int(344 * s),
+            half,
+            int(120 * s),
+            cpu_hist,
+            C_CYAN,
+            f"CPU {cpu:.0f}% · {clock_s}",
+            "cpu...",
+            0,
+            100,
+        )
         self._graph(
             draw,
             gx + half + int(10 * s),
@@ -486,11 +517,19 @@ class Overlay:
         else:
             disk_value = f"{disk_mb:.0f} MB/s"
             disk_metric = min(100.0, disk_mb / 2.0)
+        clock_pct = 0.0
+        clock_meter = clock_s
+        if mhz and mhz_max:
+            clock_pct = min(100.0, mhz / mhz_max * 100.0)
+            clock_meter = f"{mhz / 1000:.2f} / {mhz_max / 1000:.2f} GHz"
+        elif mhz:
+            clock_pct = 50.0
         left_rows = [
             ("WAN", f"{_fmt_ms(net.ping_ms if net else None)} ms", net.ping_ms if net else 0, 80),
             ("Router", f"{_fmt_ms(net.gateway_ms if net else None)} ms", net.gateway_ms if net else 0, 40),
             ("Jitter", f"{(net.jitter_ms if net else 0):.0f} ms", net.jitter_ms if net else 0, 25),
             ("Loss", f"{(net.loss_pct if net else 0):.0f}%", net.loss_pct if net else 0, 5),
+            ("Clock", clock_meter, clock_pct, 0),
         ]
         right_rows = [
             ("CPU", f"{cpu:.0f}%", cpu, 90),
