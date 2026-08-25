@@ -56,7 +56,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          repository: artem-24paybase/jujune-releases
+          repository: artem-sobolevskyi/sai-releases
           tag_name: v1.0.${{ github.run_number }}
           name: Jujune 1.0.${{ github.run_number }}
           files: dist/Jujune.exe

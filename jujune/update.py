@@ -15,8 +15,8 @@ from jujune import __version__
 from jujune.config import load_config
 from jujune.paths import data_dir
 
-SOURCE_REPO = "artem-24paybase/jujune-internet-tester"
-RELEASES_REPO = "artem-24paybase/jujune-releases"
+SOURCE_REPO = "artem-sobolevskyi/sai-monitor"
+RELEASES_REPO = "artem-sobolevskyi/sai-releases"
 USER_AGENT = f"Jujune/{__version__}"
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008

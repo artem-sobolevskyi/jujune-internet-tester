@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/artem-sobolevskyi/jujune-releases/releases/latest"><img src="https://img.shields.io/github/v/release/artem-sobolevskyi/jujune-releases?style=flat-square&label=Windows%20EXE" alt="Latest Windows release"></a>
-  <a href="https://github.com/artem-sobolevskyi/jujune-internet-tester/actions/workflows/build-windows.yml"><img src="https://img.shields.io/github/actions/workflow/status/artem-sobolevskyi/jujune-internet-tester/build-windows.yml?style=flat-square&label=Windows%20build" alt="Windows build"></a>
+  <a href="https://github.com/artem-sobolevskyi/sai-releases/releases/latest"><img src="https://img.shields.io/github/v/release/artem-sobolevskyi/sai-releases?style=flat-square&label=Windows%20EXE" alt="Latest Windows release"></a>
+  <a href="https://github.com/artem-sobolevskyi/sai-monitor/actions/workflows/build-windows.yml"><img src="https://img.shields.io/github/actions/workflow/status/artem-sobolevskyi/sai-monitor/build-windows.yml?style=flat-square&label=Windows%20build" alt="Windows build"></a>
   <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-111827?style=flat-square" alt="Windows and macOS">
 </p>
@@ -30,7 +30,7 @@ Jujune sits on top of a game and samples the network plus the machine every seco
 
 ## Download
 
-Grab the latest Windows build from **[jujune-releases](https://github.com/artem-sobolevskyi/jujune-releases/releases/latest)** — `Jujune.exe`, no install step.
+Grab the latest Windows build from **[sai-releases](https://github.com/artem-sobolevskyi/sai-releases/releases/latest)** — `Jujune.exe`, no install step.
 
 macOS: run from source or use `build_mac.sh` to make an app bundle.
 
