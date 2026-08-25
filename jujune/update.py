@@ -17,7 +17,7 @@ from jujune.paths import data_dir
 
 SOURCE_REPO = "artem-sobolevskyi/sai-monitor"
 RELEASES_REPO = "artem-sobolevskyi/sai-releases"
-USER_AGENT = f"Jujune/{__version__}"
+USER_AGENT = f"SaiMonitor/{__version__}"
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008
 CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -148,10 +148,11 @@ def _download(url: str, dest: Path, token: Optional[str], progress: Callable[[st
 
 def _pick_asset(release: dict) -> dict:
     assets = release.get("assets") or []
-    for asset in assets:
-        name = str(asset.get("name") or "").lower()
-        if name == "jujune.exe":
-            return asset
+    preferred = ("saimonitor.exe", "sai.exe", "jujune.exe")
+    by_name = {str(asset.get("name") or "").lower(): asset for asset in assets}
+    for name in preferred:
+        if name in by_name:
+            return by_name[name]
     for asset in assets:
         name = str(asset.get("name") or "").lower()
         if name.endswith(".exe"):
@@ -235,7 +236,7 @@ def run_update(progress: Callable[[str], None], restart: Callable[[], None]) -> 
     if not url:
         raise UpdateError("Release has no download URL")
     size = int(asset.get("size") or 0)
-    dest = data_dir() / "Jujune-update.exe"
+    dest = data_dir() / "SaiMonitor-update.exe"
     progress("DOWNLOADING...")
     api_url = str(asset.get("url") or "")
     public_url = str(asset.get("browser_download_url") or url)

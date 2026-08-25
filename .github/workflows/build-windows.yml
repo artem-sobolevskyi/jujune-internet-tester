@@ -37,16 +37,16 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Jujune
-          path: dist/Jujune.exe
+          name: SaiMonitor
+          path: dist/SaiMonitor.exe
           if-no-files-found: error
 
       - name: Publish source-repo release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: Jujune 1.0.${{ github.run_number }}
-          files: dist/Jujune.exe
+          name: Sai Monitor 1.0.${{ github.run_number }}
+          files: dist/SaiMonitor.exe
           generate_release_notes: true
           make_latest: true
         env:
@@ -58,7 +58,7 @@ jobs:
         with:
           repository: artem-sobolevskyi/sai-releases
           tag_name: v1.0.${{ github.run_number }}
-          name: Jujune 1.0.${{ github.run_number }}
-          files: dist/Jujune.exe
+          name: Sai Monitor 1.0.${{ github.run_number }}
+          files: dist/SaiMonitor.exe
           make_latest: true
           token: ${{ secrets.RELEASE_GITHUB_TOKEN }}
