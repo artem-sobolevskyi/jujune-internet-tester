@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/jujune_icon.png" width="148" alt="Jujune">
+  <img src="assets/jujune_icon.png" width="128" alt="Sai Monitor">
 </p>
 
-<h1 align="center">Jujune</h1>
+<h1 align="center">Sai Monitor</h1>
 
 <p align="center">
   Live overlay that tells you <em>why</em> the game lagged — not just that ping went up.
@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-111827?style=flat-square" alt="Windows and macOS">
 </p>
 
-Jujune sits on top of a game and samples the network plus the machine every second. When a stutter hits, it decides whether the problem is local Wi-Fi, the ISP, disk, CPU, GPU, or thermals — and says so in plain language.
+Sai Monitor sits on top of a game and samples the network plus the machine every second. When a stutter hits, it decides whether the problem is local Wi-Fi, the ISP, disk, CPU, GPU, or thermals — and says so in plain language.
 
 ## Features
 
@@ -30,7 +30,7 @@ Jujune sits on top of a game and samples the network plus the machine every seco
 
 ## Download
 
-Grab the latest Windows build from **[sai-releases](https://github.com/artem-sobolevskyi/sai-releases/releases/latest)** — `Jujune.exe`, no install step.
+Grab the latest Windows build from **[sai-releases](https://github.com/artem-sobolevskyi/sai-releases/releases/latest)** — no install step.
 
 macOS: run from source or use `build_mac.sh` to make an app bundle.
 
@@ -63,9 +63,9 @@ Config lives in the app data directory (`config.json`). You can add game-server 
 
 ## How it diagnoses
 
-Every tick Jujune compares WAN ping against the gateway, then against CPU, GPU, disk, and temperature. Typical verdicts:
+Every tick Sai Monitor compares WAN ping against the gateway, then against CPU, GPU, disk, and temperature. Typical verdicts:
 
-| Signal | What Jujune infers |
+| Signal | What it infers |
 | :--- | :--- |
 | High gateway RTT | Lag is local — Wi-Fi or the router |
 | Gateway is fine, WAN is not | ISP / upstream path |
